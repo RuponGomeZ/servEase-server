@@ -38,6 +38,7 @@ async function run() {
 
         const db = client.db('ServEase')
         const serviceCollection = db.collection('services')
+        const serviceOrderCollection = db.collection('serviceOrders')
 
 
         app.post('/addService', async (req, res) => {
@@ -55,6 +56,66 @@ async function run() {
             const id = req.params.id
             const query = { _id: new ObjectId(id) }
             const result = await serviceCollection.findOne(query)
+            res.send(result)
+        })
+
+        app.post('/bookService', async (req, res) => {
+
+            const order = req.body
+            const result = await serviceOrderCollection.insertOne(order)
+            res.send(result)
+        })
+
+        app.get('/bookService/:email', async (req, res) => {
+            const email = req.params.email
+            if (!email) {
+                return res.status(400).send({ error: 'Email is required' });
+            }
+            const query = { userEmail: email }
+            const result = await serviceOrderCollection.find(query).toArray()
+            res.send(result)
+        })
+
+        app.get('/servicesToDo/:email', async (req, res) => {
+            const email = req.params.email
+            const query = { serviceProviderEmail: email }
+            const result = await serviceOrderCollection.find(query).toArray()
+            res.send(result)
+        })
+
+        app.patch('/serviceToDo/changeStatus/:id', async (req, res) => {
+            const id = req.params.id
+            const data = req.body
+            const query = { _id: new ObjectId(id) }
+            const update = {
+                $set: { ...data }
+            }
+            const result = await serviceOrderCollection.updateOne(query, update)
+            res.send(result)
+        })
+
+        app.get('/manageService/:email', async (req, res) => {
+            const email = req.params.email
+            const query = { serviceProviderEmail: email }
+            const result = await serviceCollection.find(query).toArray()
+            res.send(result)
+        })
+
+        app.delete('/manageService/:id', async (req, res) => {
+            const id = req.params.id
+            const query = { _id: new ObjectId(id) }
+            const result = await serviceCollection.deleteOne(query)
+            res.send(result)
+        })
+
+        app.patch('/editService/:id', async (req, res) => {
+            const id = req.params.id;
+            const data = req.body
+            const query = { _id: new ObjectId(id) }
+            const update = {
+                $set: { ...data }
+            }
+            const result = await serviceCollection.updateOne(query, update)
             res.send(result)
         })
 
