@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const express = require('express')
 const cors = require('cors')
@@ -5,15 +6,28 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000
 const app = express()
 
+const corsOption = {
+    origin: [
+        'http://localhost:5173',
+        'https://servease-2ccfe.web.app',
+        'https://servease-2ccfe.firebaseapp.com',
+        'https://voluble-starship-91514c.netlify.app',
+    ],
 
-app.use(cors())
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 200
+};
+
+
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
+app.use(cors(corsOption))
 app.use(express.json())
-// app.use(cookieParser())
+app.use(cookieParser())
 
-console.log('Environment Variables Loaded:', {
-    USERNAME: process.env.USERNAME ? '***' : 'Not found',
-    PASSWORD: process.env.PASSWORD ? '***' : 'Not found'
-});
+
 
 
 const uri = `mongodb+srv://servease:uCwDbhoYq1NuxCgQ@cluster0.u6wg9.mongodb.net/ServEase?retryWrites=true&w=majority`;
@@ -28,6 +42,20 @@ const client = new MongoClient(uri, {
     }
 });
 
+
+const verifyToken = (req, res, next) => {
+    const token = req.cookies?.token
+    if (!token) return res.status(401).send({ message: 'unauthorized access' })
+    // console.log('JWT Secret:', process.env.ACCESS_TOKEN_SECRET?.slice(0, 10));
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized access' })
+        }
+        req.user = decoded
+        next()
+    })
+}
+
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -40,6 +68,29 @@ async function run() {
         const serviceCollection = db.collection('services')
         const serviceOrderCollection = db.collection('serviceOrders')
 
+
+        app.post('/jwt', async (req, res) => {
+            const email = req.body
+
+            const token = jwt.sign(email, process.env.ACCESS_TOKEN_SECRET, {
+                expiresIn: '365d',
+            })
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: true, // Ensure this is always true in production
+                sameSite: 'none',
+            })
+                .send({ success: true })
+        })
+
+        // clear cookie from browser
+        app.get('/logout', async (req, res) => {
+            res.clearCookie('token', {
+                secure: true, // Ensure this is always true in production
+                sameSite: 'none',
+            })
+                .send({ success: true })
+        })
 
         app.post('/addService', async (req, res) => {
             const service = req.body
@@ -66,19 +117,23 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/bookService/:email', async (req, res) => {
+        app.get('/bookService/:email', verifyToken, async (req, res) => {
             const email = req.params.email
-            if (!email) {
-                return res.status(400).send({ error: 'Email is required' });
+            const decodedEmail = req.user?.email
+            if (decodedEmail !== email) {
+                return res.status(401).send({ message: 'unauthorized access' });
             }
             const query = { userEmail: email }
             const result = await serviceOrderCollection.find(query).toArray()
             res.send(result)
         })
 
-        app.get('/servicesToDo/:email', async (req, res) => {
+        app.get('/servicesToDo/:email', verifyToken, async (req, res) => {
             const email = req.params.email
-            const query = { serviceProviderEmail: email }
+            console.log(email);
+            const decodedEmail = req.user?.email
+            if (decodedEmail !== email) return res.status(401).send({ message: 'unauthorized access' })
+            const query = { serviceProviderEmail: decodedEmail }
             const result = await serviceOrderCollection.find(query).toArray()
             res.send(result)
         })
