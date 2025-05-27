@@ -16,7 +16,7 @@ const corsOption = {
 
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // allowedHeaders: ['Content-Type', 'Authorization'],
     optionsSuccessStatus: 200
 };
 
@@ -99,8 +99,18 @@ async function run() {
         })
 
         app.get('/services', async (req, res) => {
-            const query = await serviceCollection.find().toArray()
-            res.send(query)
+            const search = req.query.search
+            console.log(search);
+
+            let query = {
+                service: {
+                    $regex: search,
+                    $options: 'i',
+                }
+            }
+            const result = await serviceCollection.find(query).toArray()
+
+            res.send(result)
         })
 
         app.get('/serviceDetails/:id', async (req, res) => {
@@ -111,7 +121,6 @@ async function run() {
         })
 
         app.post('/bookService', async (req, res) => {
-
             const order = req.body
             const result = await serviceOrderCollection.insertOne(order)
             res.send(result)
@@ -130,7 +139,7 @@ async function run() {
 
         app.get('/servicesToDo/:email', verifyToken, async (req, res) => {
             const email = req.params.email
-            console.log(email);
+            // console.log(email);
             const decodedEmail = req.user?.email
             if (decodedEmail !== email) return res.status(401).send({ message: 'unauthorized access' })
             const query = { serviceProviderEmail: decodedEmail }
@@ -138,14 +147,24 @@ async function run() {
             res.send(result)
         })
 
-        app.patch('/serviceToDo/changeStatus/:id', async (req, res) => {
+        app.patch('/serviceToDo/changeStatus/:id', verifyToken, async (req, res) => {
             const id = req.params.id
+            const userEmail = req.user.email
+
             const data = req.body
-            const query = { _id: new ObjectId(id) }
+            const service = await serviceOrderCollection.findOne({ _id: new ObjectId(id) })
+            if (!service) {
+                return res.status(404).send({ message: 'Service not found' })
+            }
+
+            if (service.serviceProviderEmail !== userEmail) {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
             const update = {
                 $set: { ...data }
             }
-            const result = await serviceOrderCollection.updateOne(query, update)
+            const result = await serviceOrderCollection.updateOne({ _id: new ObjectId(id) }, update)
+            console.log(result);
             res.send(result)
         })
 
@@ -156,11 +175,23 @@ async function run() {
             res.send(result)
         })
 
-        app.delete('/manageService/:id', async (req, res) => {
+        app.delete('/manageService/:id', verifyToken, async (req, res) => {
             const id = req.params.id
-            const query = { _id: new ObjectId(id) }
-            const result = await serviceCollection.deleteOne(query)
+            const userEmail = req.user.email
+            const service = await serviceCollection.findOne({ _id: new ObjectId(id) })
+
+            if (!service) {
+                return res.status(404).send({ message: 'Service not found' });
+            }
+
+            if (service.serviceProviderEmail !== userEmail) {
+                return res.status(403).send({ message: 'Forbidden: You are not authorized to delete this service' })
+            }
+            // console.log(query);
+            const result = await serviceCollection.deleteOne({ _id: new ObjectId(id) })
+            console.log(result);
             res.send(result)
+
         })
 
         app.patch('/editService/:id', async (req, res) => {
